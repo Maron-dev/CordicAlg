@@ -1,0 +1,126 @@
+	.eqv CON_PUTSTR, 4
+	.eqv PrintInt, 1
+	.eqv SYS_EXIT0, 10
+	.eqv ReadInt, 5
+	
+	.data
+entry:	.asciz	"Podaj kat z przedzialu (-127, 127) ktorego sin i cos chcesz obliczyc: \n"
+sin:	.asciz	"Sinus wynosi: "
+cos:	.asciz	"Cosinus wynosi: "
+err:	.asciz	"Niepoprawna wartosc kata. Sprobuj jeszcze raz"
+angle:	.space 100
+values:	.word	1065353216, 628914727, 332301269, 168681313, 84667985, 42375267, 21192804, 10597049, 5298605, 2649313, 1324658, 662329, 331165, 165582, 82791, 41396, 20698, 10349, 5174, 2587, 1294, 647, 323	#Calculeted angle values
+K_val:	.word  1275068416
+	
+	.text
+#	Legenda:
+#________________
+# t0	<-	Przechowuje liczbe iteracji jest zrobionych
+# t1	<-	zaladowana adres kolejnego specjalnego
+
+# t2	<-	rejestr na sinus/na poczatku sprawdzanie poprawnosci kata wprowadzonego
+# t3	<-	rejestr na cosinus/na poczatku sprawdzanie poprawnosci kata wprowadzonego
+
+# t4	<-	rejestr na stary sinus
+# t5	<-	rejestr na stary cosinus
+
+# t6	<-	przechowuje aktualną bete
+
+# s2	<-	ile iteracji mozna zrobic
+#_s3	<-	wartosc konta specjalnego
+
+main:
+	li t0, 0	# iteracja programu
+	li s2, 11	#informacja ile iteracji trzeba wykonac
+	
+	la t1, values	# Do t1 zaladuj adres tablicy ze specjalnymi kontami
+	li t2, 0	# Do rejestru z sinusem zladuje 0
+	
+	li t3, 1293877786	#Do cosinusa zaladuj K
+	
+	# Wydrukowanie polecenia
+	la a0, entry
+	li a7, CON_PUTSTR
+	ecall
+	
+	# Pobranie wartosci konta:
+	li a7, ReadInt
+	ecall
+	
+	#Sprawdzenie czy zostala podana poprawna wartosc kata
+	li t4, 128
+	li t5, -128
+	blt a0, t5, bad
+	bge a0, t4, bad
+	
+	mv t6, a0	# Zaladowanie wartosci podanego konta do bety
+	slli t6, t6, 24	#Przesuniecie wartosci bitowej bety o 24 bity w lewo
+	# Wykonanie programu 
+
+cordic: 
+	lw s3, (t1)	#Zaladuj wartosc specjalne z adresu t1 do s3
+	beq t0, s2, final	#Jezeli liczba iteracji jest rowna 11(zapisanej w rejestrze s2)
+	blt t6, zero, subtract_angle		#Jezeli beta w danym momencie jest ujemna to znaczy ze przesunelismy za duzo i trzeba odjac kat
+	bge t6, zero, add_angle		#Jezeli beta w danym momencie jest dodatnia to znaczy ze trzeba kat dodac
+	#Ktorys ze skokow bedzie musial sie wykonac
+	
+add_angle:
+	sub t6, t6, s3	#Odejmij do bety wartosc aktualnego konta
+	#Kopiuje wartosci rejestrow sinusa i cosinusa:
+	mv t4, t2	#Do t4 stary sinus
+	mv t5, t3	#So t5 stary sinus
+	
+	#Wykonuje obliczenia algorytmem gdy beta byla ujemna
+	sra t4,t4, t0	#Cofamy o numer iteracji bity
+	sra t5,t5, t0	#Cofamy o numer iteracji bity
+	
+	add t2, t2, t5	# Wyznaczanie nowego sinusa y_k+1 = y_k + x_k_shift
+	sub t3, t3, t4	# Wyznaczanie nowego cosinusa x_k+1 = x_k - y_k_shift
+	
+	addi t1, t1, 4	#Przejdz pod adres kolejnego konta
+	addi t0, t0, 1	# Zwiejsz ilosc wykonanych iteracji 
+	b cordic
+	
+subtract_angle:
+	add t6, t6, s3	#dodaj od bety wartosc aktualnego konta
+	#Kopiuje wartosci rejestrow:
+	mv t4, t2	#Do t4 stary sinus
+	mv t5, t3	#So t5 stary sinus
+	#Wykonuje obliczenia algorytmem gdy beta byla dodatnia
+	sra t4,t4, t0	#Cofam o okreslona przez numer iteracji bitów
+	sra t5,t5, t0	#Cofam o okreslona przez numer iteracji bitow
+	
+	sub t2, t2, t5	#y_k+1 = y_k - x_k_shift (sinus)
+	add t3, t3, t4	#x_k+1 = x_k + y_k_shift (cosinus)
+	
+	addi t1, t1, 4	#Przejdz pod adres kolejnego konta
+	addi t0, t0, 1	#Zwieksz ilosc iteracji wykonananych
+	b cordic
+
+bad:
+	la a0, err
+	li a7, CON_PUTSTR
+	ecall
+	b main
+final:
+	srai t2, t2, 24	#Powrot przecinka na wlasciwe miejsce
+	srai t3, t3, 24	#Powrot przecinka na wlasciwe miejsce
+	
+	la a0, sin
+	li a7, CON_PUTSTR
+	ecall
+	
+	mv a0, t2	#Zaladuj do printowania wartosc sinusa po 14 iteracjach
+	li a7, PrintInt
+	ecall
+	
+	la a0, cos
+	li a7, CON_PUTSTR
+	ecall
+	
+	mv a0, t3	#Zaladuj do printowania wartosc cosinusa po 14 iteracjach
+	li a7, PrintInt
+	ecall	
+	
+	li a7, SYS_EXIT0
+	ecall
